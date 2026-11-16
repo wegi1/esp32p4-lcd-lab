@@ -168,7 +168,16 @@ extern "C" void app_main(void)
         return;
     }
 
+    // Pobieramy adresy obu sprzętowych buforów utworzonych przez sterownik DPI:
+    esp_err_t fb_err = esp_lcd_dpi_panel_get_frame_buffer(dpi_handle, 2, (void **)&fbs[0], (void **)&fbs[1]);
+    if (fb_err != ESP_OK || fbs[0] == NULL || fbs[1] == NULL)
+    {
+        printf("[CRITICAL ERROR] Nie udalo sie pobrac buforow DPI! err=%d\n", fb_err);
+        return;
+    }
+
     back_buffer = (uint16_t *)fbs[0];
+    printf("[MEMORY] HW_FB0: %p, HW_FB1: %p\n", (void *)fbs[0], (void *)fbs[1]);
 
     printf("[MEM_2] Po alokacji fbs[0] (Twoje 2MB pobrane): %u KB wolnego\n", heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024);
 
