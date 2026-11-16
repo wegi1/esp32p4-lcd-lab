@@ -29,6 +29,7 @@
 #include "RTC.hpp"
 #include "driver/i2c.h" // Potrzebne do konfiguracji magistrali
 #include "wifi_ntp.hpp" // Potrzebne do synchronizacji NTP
+#include "vectordotsball.hpp"
 //============================================================================================================
 //============================================================================================================
 //============================================================================================================
@@ -205,10 +206,22 @@ extern "C" void app_main(void)
     //============================================================================================================
     init_RTC_subsystem();
 
+    extern TaskHandle_t hTaskTouch;
+    extern TaskHandle_t hTaskHardwareTouchDriver;
+
+    vTaskSuspend(hTaskTouch);
+    vTaskResume(hTaskHardwareTouchDriver);
+    start_vectordots_ball();
+    vTaskSuspend(hTaskHardwareTouchDriver);
+    vTaskResume(hTaskTouch);
     // Pętla główna Double Bufferingu
     while (1)
     {
         print_RTC();
         vTaskDelay(pdMS_TO_TICKS(100));
     }
+}
+void nothing_to_do(void)
+{
+    printf("nothing TODO!");
 }

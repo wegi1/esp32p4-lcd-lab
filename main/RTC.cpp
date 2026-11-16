@@ -420,40 +420,40 @@ void init_RTC_subsystem(void)
     // TESTOWE WYŚWIETLENIE PIERWSZEGO ZDJĘCIA (Zaraz po starcie na chwilę pokaże FOTO1.jpg!)
     // Wygaszamy ekran na start, zanim pokażemy zdjęcie
     set_brightness(0);
-    if (!is_slideshow_disabled())
-    {
-        uint16_t tx = 0, ty = 0;
-        bool aborted = false;
-        wyswietl_jpeg_ze_spiffs("/spiffs/FOTO1.jpg");
-        for (int t = 0; t <= 100; t++)
-        {
-            set_brightness(uint8_t(t));
-            if (touch.getTouch(&tx, &ty))
-            {
-                aborted = true;
-                break;
-            }
-            vTaskDelay(pdMS_TO_TICKS(15));
-        }
-        for (int i = 0; !aborted && i < 200; i++)
-        {
-            if (touch.getTouch(&tx, &ty))
-            {
-                aborted = true;
-                break;
-            }
-            vTaskDelay(pdMS_TO_TICKS(25));
-        }
-        while (touch.getTouch(&tx, &ty))
-            vTaskDelay(pdMS_TO_TICKS(20));
-        for (int t = 100; t >= 0; t--)
-        {
-            if (!aborted && touch.getTouch(&tx, &ty))
-                aborted = true;
-            set_brightness(uint8_t(t));
-            vTaskDelay(pdMS_TO_TICKS(aborted ? 5 : 40));
-        }
-    }
+    // if (!is_slideshow_disabled())
+    // {
+    //     uint16_t tx = 0, ty = 0;
+    //     bool aborted = false;
+    //     wyswietl_jpeg_ze_spiffs("/spiffs/FOTO1.jpg");
+    //     for (int t = 0; t <= 100; t++)
+    //     {
+    //         set_brightness(uint8_t(t));
+    //         if (touch.getTouch(&tx, &ty))
+    //         {
+    //             aborted = true;
+    //             break;
+    //         }
+    //         vTaskDelay(pdMS_TO_TICKS(15));
+    //     }
+    //     for (int i = 0; !aborted && i < 200; i++)
+    //     {
+    //         if (touch.getTouch(&tx, &ty))
+    //         {
+    //             aborted = true;
+    //             break;
+    //         }
+    //         vTaskDelay(pdMS_TO_TICKS(25));
+    //     }
+    //     while (touch.getTouch(&tx, &ty))
+    //         vTaskDelay(pdMS_TO_TICKS(20));
+    //     for (int t = 100; t >= 0; t--)
+    //     {
+    //         if (!aborted && touch.getTouch(&tx, &ty))
+    //             aborted = true;
+    //         set_brightness(uint8_t(t));
+    //         vTaskDelay(pdMS_TO_TICKS(aborted ? 5 : 40));
+    //     }
+    // }
 
     safe_clear_screen(fbs[0], 0x0000);
     flush_screen_vsync();
@@ -490,12 +490,13 @@ void init_RTC_subsystem(void)
 
     printf("[LOG] Podsystem RTC: Licznik 4h został zarejestrowany.\n");
 
-    print_RTC();
-    for (int t = 0; t <= BRIGHTNESS; t++)
-    {
-        set_brightness(uint8_t(t));
-        vTaskDelay(pdMS_TO_TICKS(50));
-    }
+    // print_RTC();
+    // for (int t = 0; t <= BRIGHTNESS; t++)
+    // {
+    //     set_brightness(uint8_t(t));
+    //     vTaskDelay(pdMS_TO_TICKS(50));
+    // }
+    set_brightness(BRIGHTNESS);
 }
 //=====================================================================================================
 //=====================================================================================================
@@ -1439,7 +1440,13 @@ int edit_number_menu(const char *title, int title_x, int start_val, int min_val,
 void wyswietl_jpeg_ze_spiffs(const char *sciezka_pliku)
 {
     xSemaphoreTake(fb_mutex, portMAX_DELAY);
-    printf("[JPEG] Odczyt pliku: %s\n", sciezka_pliku);
+    // printf("[JPEG] Odczyt pliku: %s\n", sciezka_pliku);
+    time_t now = time(NULL);
+    struct tm timeinfo;
+    localtime_r(&now, &timeinfo);
+
+    printf("[%02d.%02d.%02d] [JPEG] Odczyt pliku: %s\n",
+           timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec, sciezka_pliku);
     FILE *f = fopen(sciezka_pliku, "rb");
     if (f == NULL)
     {
