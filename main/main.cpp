@@ -63,7 +63,8 @@ jd9365_lcd lcd(LCD_RST);
 gsl3680_touch touch(TP_I2C_SDA, TP_I2C_SCL, TP_RST, TP_INT);
 
 // DWA SPRZĘTOWE BUFORY DLA BEZKOPIOŁOWEGO PAGE FLIPPINGU
-uint16_t *fbs[1] = {NULL};
+uint16_t *fbs[2] = {NULL, NULL};
+uint8_t *jpg_scratch_buf = NULL;
 
 SemaphoreHandle_t vsync_sem = NULL;
 //============================================================================================================
@@ -158,8 +159,15 @@ extern "C" void app_main(void)
     esp_lcd_dpi_panel_register_event_callbacks(dpi_handle, &cbs, NULL);
 
     // Alokacja dwóch buforów w PSRAM z wyrównaniem do linii Cache (64 bajty)
-    size_t buffer_size = LCD_H_RES * LCD_V_RES * 3; // + 1MB for jpeg decoding buffer
-    fbs[0] = (uint16_t *)heap_caps_aligned_alloc(64, buffer_size, MALLOC_CAP_SPIRAM);
+    // size_t buffer_size = LCD_H_RES * LCD_V_RES * 3; // + 1MB for jpeg decoding buffer
+    size_t buffer_size = LCD_H_RES * LCD_V_RES * 2;
+    jpg_scratch_buf = (uint8_t *)heap_caps_aligned_alloc(64, 1024 * 1024, MALLOC_CAP_SPIRAM);
+    if (jpg_scratch_buf == NULL)
+    {
+        printf("[CRITICAL ERROR] Brak pamieci PSRAM na bufor JPEG!\n");
+        return;
+    }
+
     back_buffer = (uint16_t *)fbs[0];
 
     printf("[MEM_2] Po alokacji fbs[0] (Twoje 2MB pobrane): %u KB wolnego\n", heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024);
@@ -211,7 +219,9 @@ extern "C" void app_main(void)
 
     vTaskSuspend(hTaskTouch);
     vTaskResume(hTaskHardwareTouchDriver);
+    set_brightness(100);
     start_vectordots_ball();
+    set_brightness(BRIGHTNESS);
     vTaskSuspend(hTaskHardwareTouchDriver);
     vTaskResume(hTaskTouch);
     // Pętla główna Double Bufferingu

@@ -48,6 +48,8 @@ extern jd9365_lcd lcd;
 extern gsl3680_touch touch;
 
 extern uint16_t *fbs[1]; // Bufory ramki (framebuffer) dla wyświetlacza
+extern uint8_t *jpg_scratch_buf;
+
 uint16_t *back_buffer = NULL;
 extern SemaphoreHandle_t vsync_sem;
 // Wskaźnik (uchwyt) do zadania gaszenia dwukropka
@@ -420,40 +422,40 @@ void init_RTC_subsystem(void)
     // TESTOWE WYŚWIETLENIE PIERWSZEGO ZDJĘCIA (Zaraz po starcie na chwilę pokaże FOTO1.jpg!)
     // Wygaszamy ekran na start, zanim pokażemy zdjęcie
     set_brightness(0);
-    // if (!is_slideshow_disabled())
-    // {
-    //     uint16_t tx = 0, ty = 0;
-    //     bool aborted = false;
-    //     wyswietl_jpeg_ze_spiffs("/spiffs/FOTO1.jpg");
-    //     for (int t = 0; t <= 100; t++)
-    //     {
-    //         set_brightness(uint8_t(t));
-    //         if (touch.getTouch(&tx, &ty))
-    //         {
-    //             aborted = true;
-    //             break;
-    //         }
-    //         vTaskDelay(pdMS_TO_TICKS(15));
-    //     }
-    //     for (int i = 0; !aborted && i < 200; i++)
-    //     {
-    //         if (touch.getTouch(&tx, &ty))
-    //         {
-    //             aborted = true;
-    //             break;
-    //         }
-    //         vTaskDelay(pdMS_TO_TICKS(25));
-    //     }
-    //     while (touch.getTouch(&tx, &ty))
-    //         vTaskDelay(pdMS_TO_TICKS(20));
-    //     for (int t = 100; t >= 0; t--)
-    //     {
-    //         if (!aborted && touch.getTouch(&tx, &ty))
-    //             aborted = true;
-    //         set_brightness(uint8_t(t));
-    //         vTaskDelay(pdMS_TO_TICKS(aborted ? 5 : 40));
-    //     }
-    // }
+    if (!is_slideshow_disabled())
+    {
+        uint16_t tx = 0, ty = 0;
+        bool aborted = false;
+        wyswietl_jpeg_ze_spiffs("/spiffs/FOTO1.jpg");
+        for (int t = 0; t <= 100; t++)
+        {
+            set_brightness(uint8_t(t));
+            if (touch.getTouch(&tx, &ty))
+            {
+                aborted = true;
+                break;
+            }
+            vTaskDelay(pdMS_TO_TICKS(15));
+        }
+        for (int i = 0; !aborted && i < 200; i++)
+        {
+            if (touch.getTouch(&tx, &ty))
+            {
+                aborted = true;
+                break;
+            }
+            vTaskDelay(pdMS_TO_TICKS(25));
+        }
+        while (touch.getTouch(&tx, &ty))
+            vTaskDelay(pdMS_TO_TICKS(20));
+        for (int t = 100; t >= 0; t--)
+        {
+            if (!aborted && touch.getTouch(&tx, &ty))
+                aborted = true;
+            set_brightness(uint8_t(t));
+            vTaskDelay(pdMS_TO_TICKS(aborted ? 5 : 40));
+        }
+    }
 
     safe_clear_screen(fbs[0], 0x0000);
     flush_screen_vsync();
@@ -490,12 +492,12 @@ void init_RTC_subsystem(void)
 
     printf("[LOG] Podsystem RTC: Licznik 4h został zarejestrowany.\n");
 
-    // print_RTC();
-    // for (int t = 0; t <= BRIGHTNESS; t++)
-    // {
-    //     set_brightness(uint8_t(t));
-    //     vTaskDelay(pdMS_TO_TICKS(50));
-    // }
+    print_RTC();
+    for (int t = 0; t <= BRIGHTNESS; t++)
+    {
+        set_brightness(uint8_t(t));
+        vTaskDelay(pdMS_TO_TICKS(50));
+    }
     set_brightness(BRIGHTNESS);
 }
 //=====================================================================================================
@@ -1460,7 +1462,6 @@ void wyswietl_jpeg_ze_spiffs(const char *sciezka_pliku)
     long file_size = ftell(f);
     fseek(f, 0, SEEK_SET);
 
-    const size_t screen_bytes = LCD_H_RES * LCD_V_RES * 2;  // Pierwsze 2 MB: wyjscie RGB565
     const size_t max_jpg_bytes = LCD_H_RES * LCD_V_RES * 1; // Trzeci 1 MB: bufor na plik .jpg
 
     if (file_size <= 0 || (size_t)file_size > max_jpg_bytes)
@@ -1472,8 +1473,8 @@ void wyswietl_jpeg_ze_spiffs(const char *sciezka_pliku)
     }
 
     // 2. Wczytujemy plik .jpg dokladnie na poczatek trzeciego megabajta (offset +2 MB)
-    uint8_t *base_ptr = (uint8_t *)fbs[0];
-    uint8_t *jpeg_input_ptr = base_ptr + screen_bytes;
+    uint8_t *base_ptr = (uint8_t *)jpg_scratch_buf;
+    uint8_t *jpeg_input_ptr = base_ptr;
 
     size_t read_bytes = fread(jpeg_input_ptr, 1, file_size, f);
     fclose(f);
@@ -1511,8 +1512,8 @@ void wyswietl_jpeg_ze_spiffs(const char *sciezka_pliku)
         return;
     }
 
-    // Dekodujemy z 3. megabajta prosto na pierwsze 2 MB bufora fbs[0]
-    jpeg_io.outbuf = base_ptr;
+    // Dekodujemy z jpg_scratch_buf
+    jpeg_io.outbuf = (uint8_t *)fbs[0];
 
     if (jpeg_dec_process(jpeg_dec, &jpeg_io) != JPEG_ERR_OK)
     {
