@@ -228,9 +228,7 @@ extern "C" void app_main(void)
 
     vTaskSuspend(hTaskTouch);
     vTaskResume(hTaskHardwareTouchDriver);
-    set_brightness(100);
     start_vectordots_ball();
-    set_brightness(BRIGHTNESS);
     vTaskSuspend(hTaskHardwareTouchDriver);
     vTaskResume(hTaskTouch);
     // Pętla główna Double Bufferingu

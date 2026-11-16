@@ -81,6 +81,8 @@ SemaphoreHandle_t fb_mutex = NULL;
 volatile uint16_t global_touchX = 0;
 volatile uint16_t global_touchY = 0;
 volatile bool global_is_touched = false;
+volatile bool demo_exit_requested = false;
+
 volatile bool ntp_read = false;
 volatile float g_outdoor_temp = -999.0f;
 volatile bool temp_read = false;
@@ -147,6 +149,7 @@ void vTaskHardwareTouchDriver(void *pvParameters)
             global_touchX = tx;
             global_touchY = ty;
             global_is_touched = true;
+            demo_exit_requested = true;
         }
         else
         {

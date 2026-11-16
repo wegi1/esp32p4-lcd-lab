@@ -23,6 +23,8 @@ extern SemaphoreHandle_t vsync_sem;
 
 // Zasoby zdefiniowane w RTC.cpp
 extern volatile bool global_is_touched;
+extern volatile bool demo_exit_requested;
+
 extern void wait_for_release(void);
 extern void refresh_menu_self(void);
 extern void set_max_briggtness(void);
@@ -174,6 +176,7 @@ void start_vectordots_ball(void)
 
     set_max_briggtness();
     global_is_touched = false;
+    demo_exit_requested = false;
 
     // clear both framebuffers
     for (i = 0; i < (800 * 1280 / 2); i++)
@@ -213,23 +216,23 @@ void start_vectordots_ball(void)
             esp_cache_msync((void *)(plots02[i] & ~63U), 64, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
         }
 
-        if (global_is_touched == true)
+        if (demo_exit_requested == true)
         {
             for (i = 0; i < (800 * 1280 / 2); i++)
             {
-                pFBaddr[i] = 0; // fill SDRAM layer buffors as black color
+                pFBaddr[i] = 0; // czyścimy pierwszy bufor fbs na czarno
             }
-
-            vTaskDelay(pdMS_TO_TICKS(20));
+            esp_cache_msync((void *)FRAME_ADDRESS, 800 * 1280 * 2, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
+            xSemaphoreTake(vsync_sem, portMAX_DELAY);
             lcd.lcd_draw_bitmap(0, 0, 800, 1280, (uint8_t *)FRAME_ADDRESS);
-
+            xSemaphoreTake(vsync_sem, portMAX_DELAY);
             wait_for_release();
             restore_brightness();
             xSemaphoreGive(fb_mutex);
             refresh_menu_self();
-
             return;
         }
+
         // esp_cache_msync((void *)FRAME_2_ADDRESS, 800 * 1280 * 2, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
         xSemaphoreTake(vsync_sem, portMAX_DELAY);
         lcd.lcd_draw_bitmap(0, 0, 800, 1280, (uint8_t *)FRAME_2_ADDRESS);
