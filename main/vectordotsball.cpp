@@ -18,7 +18,7 @@
 //==========================================================
 // Zasoby zdefiniowane w main.cpp
 extern jd9365_lcd lcd;
-extern uint16_t *fbs[1];
+extern uint16_t *fbs[2];
 extern SemaphoreHandle_t vsync_sem;
 
 // Zasoby zdefiniowane w RTC.cpp
@@ -154,8 +154,7 @@ void start_vectordots_ball(void)
 {
     xSemaphoreTake(fb_mutex, portMAX_DELAY);
     FRAME_ADDRESS = (uint32_t)fbs[0];
-    void *buf2_ptr = heap_caps_aligned_alloc(64, 800 * 1280 * 2, MALLOC_CAP_SPIRAM);
-    FRAME_2_ADDRESS = (uint32_t)buf2_ptr;
+    FRAME_2_ADDRESS = (uint32_t)fbs[1];
 
     if (multable == nullptr)
     {
@@ -222,7 +221,7 @@ void start_vectordots_ball(void)
             }
 
             vTaskDelay(pdMS_TO_TICKS(20));
-            free(buf2_ptr);
+            lcd.lcd_draw_bitmap(0, 0, 800, 1280, (uint8_t *)FRAME_ADDRESS);
 
             wait_for_release();
             restore_brightness();

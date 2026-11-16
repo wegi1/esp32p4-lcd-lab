@@ -47,7 +47,7 @@ extern jd9365_lcd lcd;
 // ZAMYKAMY DEKLARACJĘ DOTYKU W BLOKU ZGODNOŚCI "C":
 extern gsl3680_touch touch;
 
-extern uint16_t *fbs[1]; // Bufory ramki (framebuffer) dla wyświetlacza
+extern uint16_t *fbs[2]; // Bufory ramki (framebuffer) dla wyświetlacza
 extern uint8_t *jpg_scratch_buf;
 
 uint16_t *back_buffer = NULL;
