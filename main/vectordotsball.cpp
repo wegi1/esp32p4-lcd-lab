@@ -30,6 +30,7 @@ extern void refresh_menu_self(void);
 extern void set_max_briggtness(void);
 extern void restore_brightness(void);
 extern SemaphoreHandle_t fb_mutex;
+extern volatile uint8_t active_fb_idx;
 
 //====================
 extern volatile uint8_t BRIGHTNESS;
@@ -228,15 +229,15 @@ void start_vectordots_ball(void)
             xSemaphoreTake(vsync_sem, portMAX_DELAY);
             wait_for_release();
             restore_brightness();
+            active_fb_idx = 0;
+
             xSemaphoreGive(fb_mutex);
             refresh_menu_self();
             return;
         }
 
-        // esp_cache_msync((void *)FRAME_2_ADDRESS, 800 * 1280 * 2, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
-        xSemaphoreTake(vsync_sem, portMAX_DELAY);
         lcd.lcd_draw_bitmap(0, 0, 800, 1280, (uint8_t *)FRAME_2_ADDRESS);
-
+        xSemaphoreTake(vsync_sem, portMAX_DELAY);
         //---
         zoom_manage();
         //---
@@ -258,9 +259,9 @@ void start_vectordots_ball(void)
             *(uint16_t *)(plots01[i]) = 0xFFFF;
             esp_cache_msync((void *)(plots01[i] & ~63U), 64, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
         }
-        // esp_cache_msync((void *)FRAME_ADDRESS, 800 * 1280 * 2, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
-        xSemaphoreTake(vsync_sem, portMAX_DELAY);
+
         lcd.lcd_draw_bitmap(0, 0, 800, 1280, (uint8_t *)FRAME_ADDRESS);
+        xSemaphoreTake(vsync_sem, portMAX_DELAY);
         // fps_counter += 2; // bo w jednym obiegu while rysujesz 2 klatki
         // if (fps_counter >= 120)
         // {

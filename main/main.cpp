@@ -34,7 +34,7 @@
 //============================================================================================================
 //============================================================================================================
 extern uint16_t *back_buffer;
-
+SemaphoreHandle_t i2c_mutex = NULL;
 // Wymuszenie dla kompilatora C++, aby traktował plik producenta jako kod C++ / C kompatybilny
 extern "C"
 {
@@ -65,8 +65,11 @@ gsl3680_touch touch(TP_I2C_SDA, TP_I2C_SCL, TP_RST, TP_INT);
 // DWA SPRZĘTOWE BUFORY DLA BEZKOPIOŁOWEGO PAGE FLIPPINGU
 uint16_t *fbs[2] = {NULL, NULL};
 uint8_t *jpg_scratch_buf = NULL;
+volatile uint8_t active_fb_idx = 0; // Na ekranie startuje fbs
+// A w app_main(), po pobraniu fbs i fbs:
 
 SemaphoreHandle_t vsync_sem = NULL;
+
 //============================================================================================================
 //============================================================================================================
 //============================================================================================================
@@ -130,6 +133,8 @@ void sync_internal_rtc_with_rx8025t(void)
 
 extern "C" void app_main(void)
 {
+    i2c_mutex = xSemaphoreCreateMutex();
+
     init_NVS_system();                       // Inicjalizacja flasha pod NVS
     BRIGHTNESS = load_brightness_from_NVS(); // Wczytanie starej jasności
     // Polska strefa czasowa (automatyczna zmiana czasu letniego/zimowego)
@@ -176,7 +181,7 @@ extern "C" void app_main(void)
         return;
     }
 
-    back_buffer = (uint16_t *)fbs[0];
+    back_buffer = (uint16_t *)fbs[1 - active_fb_idx];
     printf("[MEMORY] HW_FB0: %p, HW_FB1: %p\n", (void *)fbs[0], (void *)fbs[1]);
 
     printf("[MEM_2] Po alokacji fbs[0] (Twoje 2MB pobrane): %u KB wolnego\n", heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024);
@@ -218,19 +223,10 @@ extern "C" void app_main(void)
     //============================================================================================================
     rx8025t_init();
     sync_internal_rtc_with_rx8025t(); // <<< WYWOŁUJEMY RAZ PO RESECIE
-
     print_internal_ram_stats("PRZED INICJALIZACJĄ ZADAŃ RTC [init_RTC_subsystem();]");
     //============================================================================================================
     init_RTC_subsystem();
 
-    extern TaskHandle_t hTaskTouch;
-    extern TaskHandle_t hTaskHardwareTouchDriver;
-
-    vTaskSuspend(hTaskTouch);
-    vTaskResume(hTaskHardwareTouchDriver);
-    start_vectordots_ball();
-    vTaskSuspend(hTaskHardwareTouchDriver);
-    vTaskResume(hTaskTouch);
     // Pętla główna Double Bufferingu
     while (1)
     {

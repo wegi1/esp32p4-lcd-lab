@@ -52,6 +52,9 @@ extern uint8_t *jpg_scratch_buf;
 
 uint16_t *back_buffer = NULL;
 extern SemaphoreHandle_t vsync_sem;
+extern SemaphoreHandle_t i2c_mutex;
+extern volatile uint8_t active_fb_idx;
+
 // Wskaźnik (uchwyt) do zadania gaszenia dwukropka
 TaskHandle_t hTaskDisableColon = NULL;
 TaskHandle_t hTaskTouch = NULL; // Uchwyt do zadania dotyku
@@ -100,10 +103,6 @@ static bool is_slideshow_disabled(void)
 // ==========================================
 void vTaskDisableColon(void *pvParameters)
 {
-    // uint64_t rtc_start = 0;
-    // uint64_t rtc_end = 0;
-    // 3. Definiujemy bufory w sposób absolutny i bezpieczny:
-    uint16_t *back_buffer = (uint16_t *)fbs[0]; // wolny bufor tła
     while (1)
     {
         // 1. Czekamy na sygnał wybudzenia z funkcji print_RTC()
@@ -111,24 +110,26 @@ void vTaskDisableColon(void *pvParameters)
         if (is_editing_time)
         {
             continue;
-        } // Jeśli edytujemy , nie ruszaj bufora zegara!
+        }
+
         // 2. Odliczamy dokładnie 500 milisekund (dwukropek świeci)
         vTaskDelay(pdMS_TO_TICKS(500));
-        // Drugie sprawdzenie flagi is_editing_time po upływie 500ms
         if (is_editing_time)
         {
             continue;
         }
 
-        // rtc_start = esp_timer_get_time();
         xSemaphoreTake(fb_mutex, portMAX_DELAY);
-        // 3. Od razu na nim GASIMY kwadraciki dwukropka
+
+        // 3. Kopiujemy aktualnie widoczny ekran do wolnego back_buffer (2 MB)
+        memcpy(back_buffer, (void *)fbs[active_fb_idx], LCD_H_RES * LCD_V_RES * 2);
+
+        // 4. Gasimy dwukropek na przygotowanym buforze tła i przełączamy klatkę
         draw_rectangle_90(back_buffer, LCD_H_RES, LCD_V_RES, 605, 104, 50, 50, 0x0000);
         draw_rectangle_90(back_buffer, LCD_H_RES, LCD_V_RES, 605, 300, 50, 50, 0x0000);
         flush_screen_vsync();
+
         xSemaphoreGive(fb_mutex);
-        // rtc_end = esp_timer_get_time();
-        // printf("[PROFILER] RENDER COLON (vTaskDisableColon) zajął: %llu us\n", (rtc_end - rtc_start));
     }
 }
 //=====================================================================================================
@@ -144,7 +145,14 @@ void vTaskHardwareTouchDriver(void *pvParameters)
         uint16_t ty = 0;
 
         // Bezpośrednie próbkowanie kontrolera dotyku na szynie I2C
-        if (touch.getTouch(&tx, &ty))
+        bool touched = false;
+        if (i2c_mutex != NULL && xSemaphoreTake(i2c_mutex, pdMS_TO_TICKS(50)) == pdTRUE)
+        {
+            touched = touch.getTouch(&tx, &ty);
+            xSemaphoreGive(i2c_mutex);
+        }
+        if (touched)
+
         {
             global_touchX = tx;
             global_touchY = ty;
@@ -514,7 +522,7 @@ void print_RTC(void)
     }
     char tekst[32];
 
-    uint16_t *main_buffer = (uint16_t *)fbs[0];
+    // uint16_t *main_buffer = (uint16_t *)fbs[0];
 
     // uint64_t rtc_start = 0;
     // uint64_t rtc_end = 0;
@@ -542,28 +550,28 @@ void print_RTC(void)
     snprintf(txt_sek, sizeof(txt_sek), "%02d", dane_czasu.tm_sec);
 
     // 1. Czyszczenie jedynego bufora na czarno
-    safe_clear_screen(main_buffer, 0x0000);
+    safe_clear_screen(back_buffer, 0x0000);
 
     // 2. Rysowanie bazy zegara (czcionki wektorowe bezpośrednio na nim)
-    draw_clock_perfect_monospace_90(main_buffer, LCD_H_RES, LCD_V_RES, digital_7_ttf, txt_godz, 0, 0, 370.0f, 0xFFFF);
-    draw_clock_perfect_monospace_90(main_buffer, LCD_H_RES, LCD_V_RES, digital_7_ttf, txt_min, 680, 0, 370.0f, 0xFFFF);
-    draw_clock_perfect_monospace_90(main_buffer, LCD_H_RES, LCD_V_RES, digital_7_ttf, txt_sek, 80, 500, 100.0f, 0xFFFF);
-    draw_clock_perfect_monospace_90(main_buffer, LCD_H_RES, LCD_V_RES, digital_7_ttf, tekst, 20, 670, 100.0f, 0xFFFF);
+    draw_clock_perfect_monospace_90(back_buffer, LCD_H_RES, LCD_V_RES, digital_7_ttf, txt_godz, 0, 0, 370.0f, 0xFFFF);
+    draw_clock_perfect_monospace_90(back_buffer, LCD_H_RES, LCD_V_RES, digital_7_ttf, txt_min, 680, 0, 370.0f, 0xFFFF);
+    draw_clock_perfect_monospace_90(back_buffer, LCD_H_RES, LCD_V_RES, digital_7_ttf, txt_sek, 80, 500, 100.0f, 0xFFFF);
+    draw_clock_perfect_monospace_90(back_buffer, LCD_H_RES, LCD_V_RES, digital_7_ttf, tekst, 20, 670, 100.0f, 0xFFFF);
 
     int week_day = calc_dow((dane_czasu.tm_year + 1900), (dane_czasu.tm_mon + 1), dane_czasu.tm_mday);
-    draw_text_90(main_buffer, LCD_H_RES, LCD_V_RES, getDayofweek(week_day), 300, 455, 200.0f, 0xFFFF);
+    draw_text_90(back_buffer, LCD_H_RES, LCD_V_RES, getDayofweek(week_day), 300, 455, 200.0f, 0xFFFF);
 
     // 3. Od razu na nim zapalamy kwadraciki dwukropka
-    draw_rectangle_90(main_buffer, LCD_H_RES, LCD_V_RES, 605, 104, 50, 50, 0xFFFF);
-    draw_rectangle_90(main_buffer, LCD_H_RES, LCD_V_RES, 605, 300, 50, 50, 0xFFFF);
+    draw_rectangle_90(back_buffer, LCD_H_RES, LCD_V_RES, 605, 104, 50, 50, 0xFFFF);
+    draw_rectangle_90(back_buffer, LCD_H_RES, LCD_V_RES, 605, 300, 50, 50, 0xFFFF);
 
     if (ntp_read == true)
     {
-        draw_rectangle_90(main_buffer, LCD_H_RES, LCD_V_RES, 1180, 555, 50, 50, 0x07E0);
+        draw_rectangle_90(back_buffer, LCD_H_RES, LCD_V_RES, 1180, 555, 50, 50, 0x07E0);
     }
     else
     {
-        draw_rectangle_90(main_buffer, LCD_H_RES, LCD_V_RES, 1180, 555, 50, 50, 0xF100);
+        draw_rectangle_90(back_buffer, LCD_H_RES, LCD_V_RES, 1180, 555, 50, 50, 0xF100);
     }
     //****************************************************************************************** */
     char txt_temp[16];
@@ -592,10 +600,10 @@ void print_RTC(void)
     int num_w = (len * 52) - 24;
     int text_x = 1077 - ((num_w + 92) / 2);
 
-    draw_text_90(main_buffer, LCD_H_RES, LCD_V_RES, txt_temp, text_x, 672, 105.0f, text_color);
-    draw_text_90(main_buffer, LCD_H_RES, LCD_V_RES, ".", text_x + num_w + 16, 663, 63.0f, text_color);
-    draw_text_90(main_buffer, LCD_H_RES, LCD_V_RES, "C", text_x + num_w + 37, 672, 105.0f, text_color);
-    draw_hollow_rectangle_90(main_buffer, LCD_H_RES, LCD_V_RES, 880, 672, 395, 120, 4, frame_color);
+    draw_text_90(back_buffer, LCD_H_RES, LCD_V_RES, txt_temp, text_x, 672, 105.0f, text_color);
+    draw_text_90(back_buffer, LCD_H_RES, LCD_V_RES, ".", text_x + num_w + 16, 663, 63.0f, text_color);
+    draw_text_90(back_buffer, LCD_H_RES, LCD_V_RES, "C", text_x + num_w + 37, 672, 105.0f, text_color);
+    draw_hollow_rectangle_90(back_buffer, LCD_H_RES, LCD_V_RES, 880, 672, 395, 120, 4, frame_color);
     //****************************************************************************************** */
     flush_screen_vsync();
     xSemaphoreGive(fb_mutex);
@@ -1516,7 +1524,7 @@ void wyswietl_jpeg_ze_spiffs(const char *sciezka_pliku)
     }
 
     // Dekodujemy z jpg_scratch_buf
-    jpeg_io.outbuf = (uint8_t *)fbs[0];
+    jpeg_io.outbuf = (uint8_t *)back_buffer;
 
     if (jpeg_dec_process(jpeg_dec, &jpeg_io) != JPEG_ERR_OK)
     {
@@ -1905,12 +1913,15 @@ void set_ntp_and_demo_menu(void)
                 exit_menu = true;
             }
 
-            // 5. HIT-BOX dla przycisku PAINT (X=440..840, Y=330..450 -> Touch Y=440..840, X=350..470)
+            // 5. PAINT --- HIT-BOX dla przycisku PAINT (X=440..840, Y=330..450 -> Touch Y=440..840, X=350..470)
             if (tx >= 335 && tx <= 465 && ty >= 390 && ty <= 890)
             {
                 printf("[MENU NTP/DEMO] -> Wybrano PAINT\n");
                 run_paint_menu();
+                wait_for_release();
                 exit_menu = true;
+                demo_exit_requested = false;
+                global_is_touched = false;
             }
 
             // Obsluga przycisku WiFi (wyjscie na dolnym pasku)
@@ -2185,10 +2196,12 @@ void draw_paint_toolbar_90(int sel_color_idx, int sel_size_idx)
 //=====================================================================================================
 void flush_screen_vsync(void)
 {
-    esp_cache_msync(back_buffer, LCD_H_RES * LCD_V_RES * 2, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
-    xSemaphoreTake(vsync_sem, 0);
+    uint8_t next_idx = 1 - active_fb_idx;
+    esp_cache_msync((void *)fbs[next_idx], LCD_H_RES * LCD_V_RES * 2, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
+    lcd.lcd_draw_bitmap(0, 0, LCD_H_RES, LCD_V_RES, (uint8_t *)fbs[next_idx]);
     xSemaphoreTake(vsync_sem, portMAX_DELAY);
-    lcd.lcd_draw_bitmap(0, 0, LCD_H_RES, LCD_V_RES, (uint8_t *)back_buffer);
+    active_fb_idx = next_idx;
+    back_buffer = (uint16_t *)fbs[1 - active_fb_idx];
 }
 
 //=====================================================================================================
